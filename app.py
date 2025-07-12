@@ -76,9 +76,6 @@ def main():
     
     # Get all relevant data
     with st.spinner("Loading session data..."):
-        # Get tire stint data
-        stints = api_client.get_stints(selected_session['session_key'], selected_driver)
-        
         # Get position data
         positions = api_client.get_position_data(selected_session['session_key'], selected_driver)
         
@@ -87,59 +84,54 @@ def main():
         
         # Get lap data
         laps = api_client.get_laps(selected_session['session_key'], selected_driver)
-
-    # Tire Strategy Analysis
-    st.subheader("🔄 Tire Strategy")
-    if stints:
-        stints_df = pd.DataFrame(stints)
-        stints_df['stint_length'] = stints_df['lap_end'] - stints_df['lap_start'] + 1
         
-        fig = px.bar(
-            stints_df,
-            x='stint_number',
-            y='stint_length',
-            color='compound',
-            labels={'stint_number': 'Stint Number', 'stint_length': 'Laps', 'compound': 'Tire Compound'},
-            color_discrete_map={
-                'SOFT': '#FF3333',
-                'MEDIUM': '#FFD700',
-                'HARD': '#FFFFFF',
-                'INTERMEDIATE': '#43B1CD',
-                'WET': '#0066CC'
-            },
-            title="Tire Stint Analysis"
-        )
-        fig.update_layout(**get_plotly_theme()['layout'])
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Stint details
-        st.write("**Stint Details:**")
-        st.dataframe(stints_df[['stint_number', 'compound', 'lap_start', 'lap_end', 'tyre_age_at_start']])
-    else:
-        st.warning("No tire stint data available for this session")
+        # Get radio messages
+        radio_messages = api_client.get_team_radio(selected_session['session_key'], selected_driver)
 
-    # Position Chart
+    # Position Chart vs Lap Number
     st.subheader("📈 Position Changes")
-    if positions:
+    if positions and laps:
         pos_df = pd.DataFrame(positions)
         pos_df['date'] = pos_df['date'].apply(parse_f1_datetime)
         
-        session_start = parse_f1_datetime(selected_session['date_start'])
-        pos_df['time_into_session'] = (pos_df['date'] - session_start).dt.total_seconds() / 60
+        laps_df = pd.DataFrame(laps)
+        laps_df['date_start'] = laps_df['date_start'].apply(parse_f1_datetime)
         
-        fig = px.line(
-            pos_df,
-            x='time_into_session',
-            y='position',
-            markers=True,
-            title="Position Throughout Session",
-            labels={'time_into_session': 'Minutes into session', 'position': 'Position'}
-        )
-        fig.update_yaxes(autorange="reversed")
-        fig.update_layout(**get_plotly_theme()['layout'])
-        st.plotly_chart(fig, use_container_width=True)
+        # Clean data - remove rows with null dates
+        pos_df = pos_df.dropna(subset=['date'])
+        laps_df = laps_df.dropna(subset=['date_start', 'lap_number'])
+        
+        if not pos_df.empty and not laps_df.empty:
+            # Merge position data with lap numbers
+            merged_df = pd.merge_asof(
+                pos_df.sort_values('date'),
+                laps_df[['date_start', 'lap_number']].sort_values('date_start'),
+                left_on='date',
+                right_on='date_start',
+                direction='nearest'
+            )
+            
+            # Remove any rows where merge didn't work
+            merged_df = merged_df.dropna(subset=['lap_number'])
+            
+            if not merged_df.empty:
+                fig = px.line(
+                    merged_df,
+                    x='lap_number',
+                    y='position',
+                    markers=True,
+                    title="Position by Lap Number",
+                    labels={'lap_number': 'Lap Number', 'position': 'Position'}
+                )
+                fig.update_yaxes(autorange="reversed")
+                fig.update_layout(**get_plotly_theme()['layout'])
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Could not merge position and lap data")
+        else:
+            st.warning("Not enough valid position or lap data available")
     else:
-        st.warning("No position data available for this session")
+        st.warning("No position or lap data available for this session")
 
     # Weather Data
     st.subheader("🌤️ Weather Conditions")
@@ -147,30 +139,33 @@ def main():
         weather_df = pd.DataFrame(weather)
         weather_df['date'] = weather_df['date'].apply(parse_f1_datetime)
         
-        # Select relevant weather metrics
-        weather_metrics = ['air_temperature', 'track_temperature', 'humidity', 'rainfall']
-        
         # Plot weather data
         fig = px.line(
             weather_df,
             x='date',
-            y=weather_metrics,
-            title="Weather Conditions During Session",
-            labels={'value': 'Measurement', 'variable': 'Metric'}
+            y=['air_temperature', 'track_temperature'],
+            title="Temperature Trends",
+            labels={'value': 'Temperature (°C)', 'variable': 'Metric'}
         )
         fig.update_layout(**get_plotly_theme()['layout'])
         st.plotly_chart(fig, use_container_width=True)
-        
-        # Weather stats
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Max Air Temp", f"{weather_df['air_temperature'].max():.1f}°C")
-        with col2:
-            st.metric("Max Track Temp", f"{weather_df['track_temperature'].max():.1f}°C")
-        with col3:
-            st.metric("Max Humidity", f"{weather_df['humidity'].max():.1f}%")
     else:
         st.warning("No weather data available for this session")
+
+    # Radio Messages
+    st.subheader("📻 Team Radio Messages")
+    if radio_messages:
+        radio_df = pd.DataFrame(radio_messages)
+        radio_df['date'] = radio_df['date'].apply(parse_f1_datetime)
+        radio_df = radio_df.sort_values('date')
+        
+        # Display radio messages with basic info
+        for idx, row in radio_df.iterrows():
+            with st.expander(f"📻 Message {idx+1} - {row['date'].strftime('%H:%M:%S')}", expanded=False):
+                st.audio(row['recording_url'])
+                st.write(f"**Timestamp:** {row['date'].strftime('%H:%M:%S')}")
+    else:
+        st.warning("No radio messages available for this session")
 
     # Lap Time Analysis
     st.subheader("⏱️ Lap Time Performance")
@@ -183,7 +178,7 @@ def main():
                 laps_df,
                 x='lap_number',
                 y='lap_duration',
-                title="Lap Times Throughout Session",
+                title="Lap Times",
                 labels={'lap_number': 'Lap Number', 'lap_duration': 'Lap Time (s)'}
             )
             fig.update_layout(**get_plotly_theme()['layout'])
