@@ -114,6 +114,64 @@ def main():
         radio_messages = api_client.get_team_radio(selected_session['session_key'], selected_driver)
 
     
+    # Comprehensive Race Summary
+    st.subheader("🏁 Race Summary")
+    if st.button("Generate Comprehensive Race Analysis"):
+        with st.spinner("Analyzing race data..."):
+            # Get all relevant data
+            positions = api_client.get_position_data(selected_session['session_key'], selected_driver)
+            laps = api_client.get_laps(selected_session['session_key'], selected_driver)
+            stints = api_client.get_stints(selected_session['session_key'], selected_driver)
+            weather = api_client.get_weather(selected_meeting['meeting_key'])
+            
+            # Prepare data for summary
+            summary_data = {
+                "driver_name": selected_driver_details['full_name'],
+                "team": selected_team,
+                "session": selected_session_name,
+                "total_laps": len(laps) if laps else 0,
+                "final_position": positions[-1]['position'] if positions else "N/A",
+                "position_changes": self._calculate_position_changes(positions) if positions else 0,
+                "fastest_lap": min([lap['lap_duration'] for lap in laps if isinstance(lap.get('lap_duration'), (int, float))], default=0),
+                "tire_strategy": [{"stint": s['stint_number'], "compound": s['compound'], "laps": s['lap_end'] - s['lap_start'] + 1} for s in stints] if stints else [],
+                "weather_changes": len(weather) > 1 if weather else False,
+                "radio_messages_count": len(radio_messages)
+            }
+            
+            # Generate comprehensive summary
+            prompt = f"""
+            Create a comprehensive race summary for {summary_data['driver_name']} ({summary_data['team']}) 
+            during the {summary_data['session']} session.
+            
+            Key data:
+            - Total laps: {summary_data['total_laps']}
+            - Final position: {summary_data['final_position']}
+            - Position changes: {summary_data['position_changes']}
+            - Fastest lap: {summary_data['fastest_lap']:.3f}s
+            - Tire strategy: {summary_data['tire_strategy']}
+            - Weather changes: {summary_data['weather_changes']}
+            - Radio messages: {summary_data['radio_messages_count']}
+            
+            Provide a detailed analysis covering:
+            1. Overall performance assessment
+            2. Tire strategy effectiveness
+            3. Position change patterns
+            4. Key moments from radio communications
+            5. Weather impact (if relevant)
+            """
+            
+            race_summary = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert F1 analyst. Provide detailed race summaries."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=500
+            ).choices[0].message.content
+            
+            st.markdown("### Full Race Analysis")
+            st.write(race_summary)
 
     # Position Chart vs Lap Number
     st.subheader("📈 Position Changes")
@@ -179,36 +237,63 @@ def main():
     else:
         st.warning("No weather data available for this session")
 
-        # Radio Messages with Transcription
+    # Radio Messages with Transcription and AI Summary
     st.subheader("📻 Team Radio Messages")
     if radio_messages:
         radio_df = pd.DataFrame(radio_messages)
         radio_df['date'] = radio_df['date'].apply(parse_f1_datetime)
         radio_df = radio_df.sort_values('date')
         
-        # Add empty column for transcriptions if it doesn't exist
-        if 'transcription' not in radio_df.columns:
-            radio_df['transcription'] = None
+        # Get lap data for timestamp-to-lap conversion
+        laps_df = pd.DataFrame(api_client.get_laps(selected_session['session_key'], selected_driver))
+        if not laps_df.empty:
+            laps_df['date_start'] = laps_df['date_start'].apply(parse_f1_datetime)
+        
+        # Add empty columns if they don't exist
+        for col in ['transcription', 'ai_summary', 'lap_number']:
+            if col not in radio_df.columns:
+                radio_df[col] = None
         
         for idx, row in radio_df.iterrows():
-            with st.expander(f"📻 Message {idx+1} - {row['date'].strftime('%H:%M:%S')}", expanded=False):
+            # Find lap number for this radio message
+            if not laps_df.empty and pd.notna(row['date']):
+                closest_lap = laps_df.iloc[(laps_df['date_start'] - row['date']).abs().argsort()[:1]]
+                if not closest_lap.empty:
+                    radio_df.at[idx, 'lap_number'] = closest_lap['lap_number'].values[0]
+            
+            with st.expander(f"📻 Lap {row['lap_number'] if pd.notna(row['lap_number']) else '?'} - {row['date'].strftime('%H:%M:%S')}", expanded=False):
                 col1, col2 = st.columns([1, 3])
                 
                 with col1:
                     st.audio(row['recording_url'])
                     
                 with col2:
-                    # Check if we already have a transcription
                     if pd.isna(row['transcription']):
-                        if st.button("Transcribe", key=f"transcribe_{idx}"):
-                            with st.spinner("Transcribing..."):
+                        if st.button("AI Summary", key=f"summarize_{idx}"):
+                            with st.spinner("Processing..."):
+                                # Transcribe audio
                                 transcription = transcribe_audio(row['recording_url'])
                                 if transcription:
                                     radio_df.at[idx, 'transcription'] = transcription
-                                    st.success("Transcription complete!")
-                                    st.text_area("Transcript", transcription, height=150)
+                                    
+                                    # Generate AI summary
+                                    summary_prompt = f"Summarize this F1 team radio message in 1-2 sentences: {transcription}"
+                                    ai_summary = openai.ChatCompletion.create(
+                                        model="gpt-3.5-turbo",
+                                        messages=[
+                                            {"role": "system", "content": "You are an F1 analyst summarizing team radio communications."},
+                                            {"role": "user", "content": summary_prompt}
+                                        ],
+                                        max_tokens=100
+                                    ).choices[0].message.content
+                                    
+                                    radio_df.at[idx, 'ai_summary'] = ai_summary
+                                    
+                                    st.text_area("Message", transcription, height=100)
+                                    st.text_area("AI Summary", ai_summary, height=60)
                     else:
-                        st.text_area("Transcript", row['transcription'], height=150)
+                        st.text_area("Message", row['transcription'], height=100)
+                        st.text_area("AI Summary", row['ai_summary'], height=60)
     else:
         st.warning("No radio messages available for this session")
 

@@ -89,3 +89,13 @@ class OpenF1Client:
         response = requests.get(url)
         response.raise_for_status()
         return response.json()
+    
+    @lru_cache(maxsize=128)
+    def get_pit_data(self, session_key: int, driver_number: int = None) -> list:
+        """Get pit stop data for a session/driver"""
+        url = f"{self.BASE_URL}/pit?session_key={session_key}"
+        if driver_number:
+            url += f"&driver_number={driver_number}"
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
