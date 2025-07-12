@@ -5,15 +5,40 @@ from utils.api_client import OpenF1Client
 from utils.styling import apply_dark_theme, apply_team_dark_style, get_team_style, get_plotly_theme
 import os
 from dotenv import load_dotenv
+# Add these imports at the top with your other imports
+import requests
+from io import BytesIO
+import openai
 
 # Load environment variables
 load_dotenv()
 
+
 # Initialize client
 api_client = OpenF1Client()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Apply dark theme
 st.markdown(apply_dark_theme(), unsafe_allow_html=True)
+
+def transcribe_audio(audio_url):
+    """Transcribe audio using OpenAI Whisper API"""
+    try:
+        # Download the audio file
+        response = requests.get(audio_url)
+        audio_file = BytesIO(response.content)
+        audio_file.name = "radio_message.mp3"  # Required by OpenAI
+        
+        # Transcribe using Whisper
+        transcript = openai.Audio.transcribe(
+            model="whisper-1",
+            file=audio_file,
+            response_format="text"
+        )
+        return transcript
+    except Exception as e:
+        st.error(f"Transcription failed: {str(e)}")
+        return None
 
 def parse_f1_datetime(dt_str):
     """Robust F1 datetime parser"""
@@ -88,6 +113,8 @@ def main():
         # Get radio messages
         radio_messages = api_client.get_team_radio(selected_session['session_key'], selected_driver)
 
+    
+
     # Position Chart vs Lap Number
     st.subheader("📈 Position Changes")
     if positions and laps:
@@ -152,18 +179,36 @@ def main():
     else:
         st.warning("No weather data available for this session")
 
-    # Radio Messages
+        # Radio Messages with Transcription
     st.subheader("📻 Team Radio Messages")
     if radio_messages:
         radio_df = pd.DataFrame(radio_messages)
         radio_df['date'] = radio_df['date'].apply(parse_f1_datetime)
         radio_df = radio_df.sort_values('date')
         
-        # Display radio messages with basic info
+        # Add empty column for transcriptions if it doesn't exist
+        if 'transcription' not in radio_df.columns:
+            radio_df['transcription'] = None
+        
         for idx, row in radio_df.iterrows():
             with st.expander(f"📻 Message {idx+1} - {row['date'].strftime('%H:%M:%S')}", expanded=False):
-                st.audio(row['recording_url'])
-                st.write(f"**Timestamp:** {row['date'].strftime('%H:%M:%S')}")
+                col1, col2 = st.columns([1, 3])
+                
+                with col1:
+                    st.audio(row['recording_url'])
+                    
+                with col2:
+                    # Check if we already have a transcription
+                    if pd.isna(row['transcription']):
+                        if st.button("Transcribe", key=f"transcribe_{idx}"):
+                            with st.spinner("Transcribing..."):
+                                transcription = transcribe_audio(row['recording_url'])
+                                if transcription:
+                                    radio_df.at[idx, 'transcription'] = transcription
+                                    st.success("Transcription complete!")
+                                    st.text_area("Transcript", transcription, height=150)
+                    else:
+                        st.text_area("Transcript", row['transcription'], height=150)
     else:
         st.warning("No radio messages available for this session")
 
