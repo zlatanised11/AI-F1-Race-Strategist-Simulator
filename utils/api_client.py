@@ -73,3 +73,19 @@ class OpenF1Client:
         response = requests.get(url)
         response.raise_for_status()
         return response.json()
+    
+    @lru_cache(maxsize=128)
+    def get_stints(self, session_key: int, driver_number: int = None) -> list:
+        url = f"{self.BASE_URL}/stints?session_key={session_key}"
+        if driver_number:
+            url += f"&driver_number={driver_number}"
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+
+    @lru_cache(maxsize=128)
+    def get_weather(self, meeting_key: int) -> list:
+        url = f"{self.BASE_URL}/weather?meeting_key={meeting_key}"
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
