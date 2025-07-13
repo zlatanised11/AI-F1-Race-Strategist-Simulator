@@ -22,7 +22,7 @@ def get_compound_color(compound):
     return {
         'SOFT': '#FF3333',
         'MEDIUM': '#FFD700',
-        'HARD': '#FFFFFF',
+        'HARD': '#BFBFBF',
         'INTERMEDIATE': '#43B649',
         'WET': '#0066CC'
     }.get(compound, '#CCCCCC')
