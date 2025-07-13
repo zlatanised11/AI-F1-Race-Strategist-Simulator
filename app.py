@@ -73,6 +73,10 @@ def parse_f1_datetime(dt_str):
 def main():
     st.title("🏎️ Formula 1 Team Strategy Analyzer")
     
+    # Initialize session state
+    if 'submitted' not in st.session_state:
+        st.session_state.submitted = False
+    
     # Sidebar filters
     with st.sidebar:
         st.header("Session Selection")
@@ -99,6 +103,15 @@ def main():
         
         selected_driver_details = next(d for d in team_drivers if d['driver_number'] == selected_driver)
         st.image(selected_driver_details['headshot_url'], width=100)
+        
+        # Submit button that updates session state
+        if st.button("Submit Analysis Request"):
+            st.session_state.submitted = True
+    
+    # Check submission state
+    if not st.session_state.submitted:
+        st.info("Please select your analysis parameters and click 'Submit Analysis Request'")
+        return
     
     # Apply team styling
     st.markdown(apply_team_dark_style(selected_team), unsafe_allow_html=True)
@@ -132,12 +145,6 @@ def main():
     st.subheader("🏁 Race Summary")
     if st.button("Generate Comprehensive Race Analysis"):
         with st.spinner("Analyzing race data..."):
-            positions = api_client.get_position_data(selected_session['session_key'], selected_driver)
-            laps = api_client.get_laps(selected_session['session_key'], selected_driver)
-            stints = api_client.get_stints(selected_session['session_key'], selected_driver)
-            weather = api_client.get_weather(selected_meeting['meeting_key'])
-            
-            # Prepare data for summary
             summary_data = {
                 "driver_name": selected_driver_details['full_name'],
                 "team": selected_team,
@@ -151,7 +158,6 @@ def main():
                 "radio_messages_count": len(radio_messages)
             }
             
-            # Generate comprehensive summary
             prompt = f"""
             Create a comprehensive race summary for {summary_data['driver_name']} ({summary_data['team']}) 
             during the {summary_data['session']} session.
@@ -246,8 +252,7 @@ def main():
     else:
         st.warning("No weather data available for this session")
 
-   # In the "Lap Time Performance" section, replace with this:
-
+    # Lap Time Performance
     st.subheader("⏱️ Lap Time Performance")
     if laps:
         laps_df = pd.DataFrame(laps)
@@ -262,8 +267,10 @@ def main():
             if pit_data:
                 pit_df = pd.DataFrame(pit_data)
                 pit_laps = pit_df['lap_number'].unique().tolist()
+                # Add pit stop indicator column
+                laps_df['is_pit'] = laps_df['lap_number'].isin(pit_laps)
             
-            # Create clean plot without tire compounds
+            # Create plot
             fig = px.line(
                 laps_df,
                 x='lap_number',
@@ -275,16 +282,15 @@ def main():
             
             # Highlight pit stops if they exist
             if pit_laps:
-                pit_lap_data = laps_df[laps_df['lap_number'].isin(pit_laps)]
+                pit_lap_data = laps_df[laps_df['is_pit']]
                 fig.add_trace(px.scatter(
                     pit_lap_data,
                     x='lap_number',
                     y='lap_duration',
                     color_discrete_sequence=['red'],
-                    hover_name="PIT STOP"
+                    hover_data={'is_pit': True}
                 ).data[0])
                 
-                # Add pit duration annotations
                 for _, pit in pit_df.iterrows():
                     fig.add_annotation(
                         x=pit['lap_number'],
@@ -299,7 +305,6 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
             
             # Show tire strategy table separately if stints exist
-            stints = api_client.get_stints(selected_session['session_key'], selected_driver)
             if stints:
                 st.subheader("🔄 Tire Strategy")
                 stint_df = pd.DataFrame(stints)
@@ -383,7 +388,13 @@ def main():
                             with st.spinner("Processing..."):
                                 transcription = transcribe_audio(row['recording_url'])
                                 if transcription:
-                                    radio_df.at[idx, 'transcription'] = transcription
+                                    # Store in session state
+                                    if 'transcriptions' not in st.session_state:
+                                        st.session_state.transcriptions = {}
+                                    if 'ai_summaries' not in st.session_state:
+                                        st.session_state.ai_summaries = {}
+                                    
+                                    st.session_state.transcriptions[idx] = transcription
                                     
                                     summary_prompt = f"Summarize this F1 team radio message in 1-2 sentences: {transcription}"
                                     ai_summary = openai.ChatCompletion.create(
@@ -395,13 +406,17 @@ def main():
                                         max_tokens=100
                                     ).choices[0].message.content
                                     
-                                    radio_df.at[idx, 'ai_summary'] = ai_summary
+                                    st.session_state.ai_summaries[idx] = ai_summary
                                     
-                                    st.text_area("Message", transcription, height=100)
-                                    st.text_area("AI Summary", ai_summary, height=60)
+                                    st.text_area("Message", transcription, height=100, key=f"msg_{idx}")
+                                    st.text_area("AI Summary", ai_summary, height=60, key=f"sum_{idx}")
                     else:
-                        st.text_area("Message", row['transcription'], height=100)
-                        st.text_area("AI Summary", row['ai_summary'], height=60)
+                        # Retrieve from session state if available
+                        transcription = st.session_state.transcriptions.get(idx, row['transcription'])
+                        ai_summary = st.session_state.ai_summaries.get(idx, row['ai_summary'])
+                        
+                        st.text_area("Message", transcription, height=100, key=f"msg_{idx}")
+                        st.text_area("AI Summary", ai_summary, height=60, key=f"sum_{idx}")
     else:
         st.warning("No radio messages available for this session")
 
