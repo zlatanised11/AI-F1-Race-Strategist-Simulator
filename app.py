@@ -16,6 +16,22 @@ load_dotenv()
 api_client = OpenF1Client()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+def get_compound_color(compound):
+    """Return color for each tire compound"""
+    return {
+        'SOFT': '#FF3333',
+        'MEDIUM': '#FFD700',
+        'HARD': '#FFFFFF',
+        'INTERMEDIATE': '#43B649',
+        'WET': '#0066CC'
+    }.get(compound, '#CCCCCC')
+
+def color_compound(val):
+    """Helper function to color compound cells"""
+    color = get_compound_color(val)
+    text_color = 'black' if val == 'HARD' else 'white'
+    return f'background-color: {color}; color: {text_color}'
+
 def calculate_position_changes(positions: list) -> int:
     """Calculate total number of position changes"""
     if not positions:
@@ -109,6 +125,8 @@ def main():
         weather = api_client.get_weather(selected_meeting['meeting_key'])
         laps = api_client.get_laps(selected_session['session_key'], selected_driver)
         radio_messages = api_client.get_team_radio(selected_session['session_key'], selected_driver)
+        pit_data = api_client.get_pit_data(selected_session['session_key'], selected_driver)
+        stints = api_client.get_stints(selected_session['session_key'], selected_driver)
 
     # Comprehensive Race Summary
     st.subheader("🏁 Race Summary")
@@ -126,7 +144,7 @@ def main():
                 "session": selected_session_name,
                 "total_laps": len(laps) if laps else 0,
                 "final_position": positions[-1]['position'] if positions else "N/A",
-                "position_changes": calculate_position_changes(positions) if positions else 0,  # Fixed this line
+                "position_changes": calculate_position_changes(positions) if positions else 0,
                 "fastest_lap": min([lap['lap_duration'] for lap in laps if isinstance(lap.get('lap_duration'), (int, float))], default=0),
                 "tire_strategy": [{"stint": s['stint_number'], "compound": s['compound'], "laps": s['lap_end'] - s['lap_start'] + 1} for s in stints] if stints else [],
                 "weather_changes": len(weather) > 1 if weather else False,
@@ -228,6 +246,110 @@ def main():
     else:
         st.warning("No weather data available for this session")
 
+   # In the "Lap Time Performance" section, replace with this:
+
+    st.subheader("⏱️ Lap Time Performance")
+    if laps:
+        laps_df = pd.DataFrame(laps)
+        laps_df = laps_df[laps_df['lap_duration'].notna()]
+        
+        if not laps_df.empty:
+            # Get pit data
+            pit_data = api_client.get_pit_data(selected_session['session_key'], selected_driver)
+            
+            # Mark pit laps
+            pit_laps = []
+            if pit_data:
+                pit_df = pd.DataFrame(pit_data)
+                pit_laps = pit_df['lap_number'].unique().tolist()
+            
+            # Create clean plot without tire compounds
+            fig = px.line(
+                laps_df,
+                x='lap_number',
+                y='lap_duration',
+                title="Lap Times",
+                labels={'lap_number': 'Lap Number', 'lap_duration': 'Lap Time (s)'},
+                height=500
+            )
+            
+            # Highlight pit stops if they exist
+            if pit_laps:
+                pit_lap_data = laps_df[laps_df['lap_number'].isin(pit_laps)]
+                fig.add_trace(px.scatter(
+                    pit_lap_data,
+                    x='lap_number',
+                    y='lap_duration',
+                    color_discrete_sequence=['red'],
+                    hover_name="PIT STOP"
+                ).data[0])
+                
+                # Add pit duration annotations
+                for _, pit in pit_df.iterrows():
+                    fig.add_annotation(
+                        x=pit['lap_number'],
+                        y=laps_df[laps_df['lap_number'] == pit['lap_number']]['lap_duration'].values[0],
+                        text=f"Pit: {pit['pit_duration']:.2f}s",
+                        showarrow=True,
+                        arrowhead=1,
+                        yshift=10
+                    )
+            
+            fig.update_layout(**get_plotly_theme()['layout'])
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Show tire strategy table separately if stints exist
+            stints = api_client.get_stints(selected_session['session_key'], selected_driver)
+            if stints:
+                st.subheader("🔄 Tire Strategy")
+                stint_df = pd.DataFrame(stints)
+                
+                # Calculate fastest lap per stint
+                stint_fastest = []
+                for _, stint in stint_df.iterrows():
+                    stint_laps = laps_df[
+                        (laps_df['lap_number'] >= stint['lap_start']) & 
+                        (laps_df['lap_number'] <= stint['lap_end'])
+                    ]
+                    fastest = stint_laps['lap_duration'].min()
+                    stint_fastest.append(fastest)
+                
+                stint_df['fastest_lap'] = stint_fastest
+                
+                # Prepare table data
+                strategy_table = []
+                for _, stint in stint_df.iterrows():
+                    strategy_table.append({
+                        "Laps": f"{stint['lap_start']}-{stint['lap_end']}",
+                        "Compound": stint['compound'],
+                        "Stint Length": stint['lap_end'] - stint['lap_start'] + 1,
+                        "Fastest Lap": f"{stint['fastest_lap']:.3f}s",
+                    })
+                
+                # Display styled table
+                st.dataframe(
+                    pd.DataFrame(strategy_table).style.applymap(
+                        color_compound, 
+                        subset=['Compound']
+                    )
+                )
+            
+            # Show performance metrics (excluding pit laps)
+            normal_laps = laps_df[~laps_df['lap_number'].isin(pit_laps)] if pit_laps else laps_df
+            fastest_lap = normal_laps['lap_duration'].min()
+            avg_lap = normal_laps['lap_duration'].mean()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Fastest Lap", f"{fastest_lap:.3f}s" + (" (excl. pits)" if pit_laps else ""))
+            with col2:
+                st.metric("Average Lap", f"{avg_lap:.3f}s" + (" (excl. pits)" if pit_laps else ""))
+        
+        else:
+            st.warning("No valid lap time data available")
+    else:
+        st.warning("No lap data available for this session")
+
     # Radio Messages with Transcription and AI Summary
     st.subheader("📻 Team Radio Messages")
     if radio_messages:
@@ -282,36 +404,6 @@ def main():
                         st.text_area("AI Summary", row['ai_summary'], height=60)
     else:
         st.warning("No radio messages available for this session")
-
-    # Lap Time Analysis
-    st.subheader("⏱️ Lap Time Performance")
-    if laps:
-        laps_df = pd.DataFrame(laps)
-        laps_df = laps_df[laps_df['lap_duration'].notna()]
-        
-        if not laps_df.empty:
-            fig = px.line(
-                laps_df,
-                x='lap_number',
-                y='lap_duration',
-                title="Lap Times",
-                labels={'lap_number': 'Lap Number', 'lap_duration': 'Lap Time (s)'}
-            )
-            fig.update_layout(**get_plotly_theme()['layout'])
-            st.plotly_chart(fig, use_container_width=True)
-            
-            fastest_lap = laps_df['lap_duration'].min()
-            avg_lap = laps_df['lap_duration'].mean()
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Fastest Lap", f"{fastest_lap:.3f}s")
-            with col2:
-                st.metric("Average Lap", f"{avg_lap:.3f}s")
-        else:
-            st.warning("No valid lap time data available")
-    else:
-        st.warning("No lap data available for this session")
 
 if __name__ == "__main__":
     main()
