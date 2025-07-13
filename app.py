@@ -466,68 +466,6 @@ def main():
     st.subheader("📻 Team Radio Messages")
     radio_messages = st.session_state.fetched_data.get('radio_messages', [])
     display_radio_messages(selected_session, selected_driver, radio_messages)
-    if radio_messages:
-        radio_df = pd.DataFrame(radio_messages)
-        radio_df['date'] = radio_df['date'].apply(parse_f1_datetime)
-        radio_df = radio_df.sort_values('date')
-        
-        laps_df = pd.DataFrame(laps)
-        if not laps_df.empty:
-            laps_df['date_start'] = laps_df['date_start'].apply(parse_f1_datetime)
-        
-        for col in ['transcription', 'ai_summary', 'lap_number']:
-            if col not in radio_df.columns:
-                radio_df[col] = None
-        
-        for idx, row in radio_df.iterrows():
-            if not laps_df.empty and pd.notna(row['date']):
-                closest_lap = laps_df.iloc[(laps_df['date_start'] - row['date']).abs().argsort()[:1]]
-                if not closest_lap.empty:
-                    radio_df.at[idx, 'lap_number'] = closest_lap['lap_number'].values[0]
-            
-            with st.expander(f"📻 Lap {row['lap_number'] if pd.notna(row['lap_number']) else '?'} - {row['date'].strftime('%H:%M:%S')}", expanded=False):
-                col1, col2 = st.columns([1, 3])
-                
-                with col1:
-                    st.audio(row['recording_url'])
-                    
-                with col2:
-                    if pd.isna(row['transcription']):
-                        if st.button("AI Summary", key=f"summarize_{idx}"):
-                            with st.spinner("Processing..."):
-                                transcription = transcribe_audio(row['recording_url'])
-                                if transcription:
-                                    # Store in session state
-                                    if 'transcriptions' not in st.session_state:
-                                        st.session_state.transcriptions = {}
-                                    if 'ai_summaries' not in st.session_state:
-                                        st.session_state.ai_summaries = {}
-                                    
-                                    st.session_state.transcriptions[idx] = transcription
-                                    
-                                    summary_prompt = f"Summarize this F1 team radio message in 1-2 sentences: {transcription}"
-                                    ai_summary = openai.ChatCompletion.create(
-                                        model="gpt-3.5-turbo",
-                                        messages=[
-                                            {"role": "system", "content": "You are an F1 analyst summarizing team radio communications."},
-                                            {"role": "user", "content": summary_prompt}
-                                        ],
-                                        max_tokens=100
-                                    ).choices[0].message.content
-                                    
-                                    st.session_state.ai_summaries[idx] = ai_summary
-                                    
-                                    st.text_area("Message", transcription, height=100, key=f"msg_{idx}")
-                                    st.text_area("AI Summary", ai_summary, height=60, key=f"sum_{idx}")
-                    else:
-                        # Retrieve from session state if available
-                        transcription = st.session_state.transcriptions.get(idx, row['transcription'])
-                        ai_summary = st.session_state.ai_summaries.get(idx, row['ai_summary'])
-                        
-                        st.text_area("Message", transcription, height=100, key=f"msg_{idx}")
-                        st.text_area("AI Summary", ai_summary, height=60, key=f"sum_{idx}")
-    else:
-        st.warning("No radio messages available for this session")
 
 if __name__ == "__main__":
     main()
