@@ -51,6 +51,8 @@ def transcribe_audio(audio_url):
         response = requests.get(audio_url)
         audio_file = BytesIO(response.content)
         audio_file.name = "radio_message.mp3"
+        
+        # Old API syntax (works with openai==0.28.1)
         transcript = openai.Audio.transcribe(
             model="whisper-1",
             file=audio_file,
