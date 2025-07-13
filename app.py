@@ -153,7 +153,7 @@ def display_radio_messages(selected_session, selected_driver, radio_messages):
                 if idx in st.session_state.ai_summaries:
                     st.text_area("AI Summary", 
                                st.session_state.ai_summaries[idx], 
-                               height=60, 
+                               height=68, 
                                key=f"sum_{idx}")
 
 def main():
