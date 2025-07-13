@@ -70,6 +70,89 @@ def parse_f1_datetime(dt_str):
             return pd.to_datetime(dt_str, format='mixed')
         except:
             return pd.to_datetime(dt_str, errors='coerce')
+        
+def display_radio_messages(selected_session, selected_driver, radio_messages):
+    if not radio_messages:
+        st.warning("No radio messages available for this session")
+        return
+    
+    # Create DataFrame and process timestamps
+    radio_df = pd.DataFrame(radio_messages)
+    radio_df['date'] = radio_df['date'].apply(parse_f1_datetime)
+    radio_df = radio_df.sort_values('date')
+    radio_df['lap_number'] = "?"  # Initialize with default value
+    
+    # Get lap data for this driver
+    laps = api_client.get_laps(selected_session['session_key'], selected_driver)
+    if laps:
+        laps_df = pd.DataFrame(laps)
+        
+        # Convert and clean lap data
+        laps_df['date_start'] = laps_df['date_start'].apply(parse_f1_datetime)
+        laps_df = laps_df.dropna(subset=['date_start', 'lap_duration'])
+        laps_df = laps_df.sort_values('lap_number')
+        
+        # Match radio messages to laps
+        for idx, radio_row in radio_df.iterrows():
+            radio_time = radio_row['date']
+            
+            for _, lap_row in laps_df.iterrows():
+                try:
+                    lap_start = lap_row['date_start']
+                    lap_duration = lap_row['lap_duration']
+                    
+                    # Skip if we have invalid lap data
+                    if pd.isna(lap_duration):
+                        continue
+                        
+                    lap_end = lap_start + pd.Timedelta(seconds=float(lap_duration))
+                    
+                    if lap_start <= radio_time <= lap_end:
+                        radio_df.at[idx, 'lap_number'] = int(lap_row['lap_number'])
+                        break
+                        
+                except (TypeError, ValueError):
+                    continue
+    
+    # Display each radio message
+    for idx, row in radio_df.iterrows():
+        if 'transcriptions' not in st.session_state:
+            st.session_state.transcriptions = {}
+        if 'ai_summaries' not in st.session_state:
+            st.session_state.ai_summaries = {}
+        
+        with st.expander(f"📻 Lap {row['lap_number']} - {row['date'].strftime('%H:%M:%S')}", expanded=False):
+            col1, col2 = st.columns([1, 3])
+            
+            with col1:
+                st.audio(row['recording_url'])
+            
+            with col2:
+                if idx not in st.session_state.transcriptions:
+                    if st.button("Transcribe", key=f"transcribe_{idx}"):
+                        with st.spinner("Transcribing..."):
+                            transcription = transcribe_audio(row['recording_url'])
+                            if transcription:
+                                st.session_state.transcriptions[idx] = transcription
+                                summary_prompt = f"Summarize this F1 team radio message in 1-2 sentences: {transcription}"
+                                ai_summary = openai.ChatCompletion.create(
+                                    model="gpt-3.5-turbo",
+                                    messages=[
+                                        {"role": "system", "content": "You are an F1 analyst summarizing team radio communications."},
+                                        {"role": "user", "content": summary_prompt}
+                                    ],
+                                    max_tokens=100
+                                ).choices[0].message.content
+                                st.session_state.ai_summaries[idx] = ai_summary
+                
+                transcription = st.session_state.transcriptions.get(idx, "")
+                st.text_area("Message", transcription, height=100, key=f"msg_{idx}")
+                
+                if idx in st.session_state.ai_summaries:
+                    st.text_area("AI Summary", 
+                               st.session_state.ai_summaries[idx], 
+                               height=60, 
+                               key=f"sum_{idx}")
 
 def main():
     st.title("🏎️ Formula 1 Team Strategy Analyzer")
@@ -379,7 +462,10 @@ def main():
             st.warning("No lap data available for this session")
 
     # Radio Messages with Transcription and AI Summary
+# Inside your main() function, where you currently have the radio messages code:
     st.subheader("📻 Team Radio Messages")
+    radio_messages = st.session_state.fetched_data.get('radio_messages', [])
+    display_radio_messages(selected_session, selected_driver, radio_messages)
     if radio_messages:
         radio_df = pd.DataFrame(radio_messages)
         radio_df['date'] = radio_df['date'].apply(parse_f1_datetime)

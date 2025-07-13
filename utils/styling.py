@@ -184,7 +184,7 @@ def apply_dark_theme():
     </style>
     """
 
-def apply_team_dark_style(team_name: str):
+def apply_team_dark_style(team_name):
     style = get_team_style(team_name)
     dark_style = style.get("dark", style['primary'])
     sidebar_style = style.get("sidebar", DARK_THEME['sidebar_bg'])
@@ -206,12 +206,25 @@ def apply_team_dark_style(team_name: str):
             background-color: {sidebar_style} !important;
         }}
         
+        /* Sidebar buttons */
+        .stButton>button {{
+            background-color: {style['primary']} !important;
+            color: {style['text']} !important;
+            border: 1px solid {style['secondary']} !important;
+            border-radius: 4px !important;
+            padding: 0.5rem 1rem !important;
+            margin: 0.25rem 0 !important;
+            transition: all 0.3s ease !important;
+        }}
+        
+        .stButton>button:hover {{
+            background-color: {style['secondary']} !important;
+            border-color: {style['primary']} !important;
+        }}
+        
         /* Radio buttons */
         .stRadio > div > label {{
             color: {DARK_THEME['text']} !important;
-        }}
-        .stRadio > div > div {{
-            background-color: {DARK_THEME['secondary']};
         }}
         
         /* Expanders */
@@ -220,36 +233,55 @@ def apply_team_dark_style(team_name: str):
             border-color: {dark_style};
             margin-bottom: 1rem;
         }}
-        .st-expander > div {{
-            border-left: 3px solid {dark_style};
-        }}
-        
-        /* Custom metric containers */
-        .metric-container {{
-            background-color: {DARK_THEME['secondary']};
-            border-left: 3px solid {dark_style};
-            padding: 1rem;
-            border-radius: 0.5rem;
-        }}
-        
-        /* Plotly toolbar */
-        .plotly .modebar {{
-            background-color: {DARK_THEME['secondary']} !important;
-        }}
-        
-        /* Team accent colors */
-        .st-b7, .st-cq {{
-            color: {style['primary']} !important;
-        }}
         
         /* Fix for all text in sidebar */
         [data-testid="stSidebar"] * {{
             color: {DARK_THEME['text']} !important;
         }}
         
-        /* Fix for selectbox options */
-        .st-bv, .st-bw, .st-bx {{
+        /* Make select boxes more readable */
+        .stSelectbox>div>div>select {{
             background-color: {DARK_THEME['secondary']} !important;
+            color: {DARK_THEME['text']} !important;
+        }}
+        
+        /* Style the submit button specifically */
+        div[data-testid="stSidebar"] .stButton>button {{
+            background-color: {style['primary']} !important;
+            color: {style['text']} !important;
+            font-weight: bold !important;
+            border: 2px solid {style['secondary']} !important;
+        }}
+
+        /* Dropdown/Select Box Styling - Minimal changes to match team colors */
+        .stSelectbox > div > div {{
+            background-color: {DARK_THEME['secondary']} !important;
+            border-color: {style['primary']} !important;
+        }}
+        
+        .stSelectbox > div > div > select {{
+            background-color: {DARK_THEME['secondary']} !important;
+            color: {DARK_THEME['text']} !important;
+            border-color: {style['primary']} !important;
+        }}
+        
+        .stSelectbox > div > div > svg {{
+            color: {style['primary']} !important;
+        }}
+        
+        .stSelectbox > div > div > div > div {{
+            background-color: {DARK_THEME['secondary']} !important;
+            color: {DARK_THEME['text']} !important;
+            border-color: {style['primary']} !important;
+        }}
+        
+        .stSelectbox > div > div > div > div > div:hover {{
+            background-color: {style['primary']} !important;
+            color: {style['text']} !important;
+        }}
+        
+        /* Keep existing label styling */
+        .stSelectbox label {{
             color: {DARK_THEME['text']} !important;
         }}
     </style>
@@ -258,18 +290,18 @@ def apply_team_dark_style(team_name: str):
 def get_plotly_theme():
     return {
         'layout': {
-            'plot_bgcolor': DARK_THEME['plot_bg'],
-            'paper_bgcolor': DARK_THEME['bg'],
-            'font': {'color': DARK_THEME['plot_text']},
+            'plot_bgcolor': '#FFFFFF',  # White plot area
+            'paper_bgcolor': '#FFFFFF', # White outer area
+            'font': {'color': '#000000'},  # Change text to black
             'xaxis': {
-                'gridcolor': '#444',
-                'linecolor': '#666',
-                'zerolinecolor': '#666'
+                'gridcolor': '#CCC',
+                'linecolor': '#999',
+                'zerolinecolor': '#999'
             },
             'yaxis': {
-                'gridcolor': '#444',
-                'linecolor': '#666',
-                'zerolinecolor': '#666'
+                'gridcolor': '#CCC',
+                'linecolor': '#999',
+                'zerolinecolor': '#999'
             }
         }
     }
