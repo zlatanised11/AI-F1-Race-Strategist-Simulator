@@ -5,7 +5,6 @@ from utils.api_client import OpenF1Client
 from utils.styling import apply_dark_theme, apply_team_dark_style, get_team_style, get_plotly_theme
 import os
 from dotenv import load_dotenv
-# Add these imports at the top with your other imports
 import requests
 from io import BytesIO
 import openai
@@ -13,23 +12,28 @@ import openai
 # Load environment variables
 load_dotenv()
 
-
 # Initialize client
 api_client = OpenF1Client()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Apply dark theme
-st.markdown(apply_dark_theme(), unsafe_allow_html=True)
+def calculate_position_changes(positions: list) -> int:
+    """Calculate total number of position changes"""
+    if not positions:
+        return 0
+    changes = 0
+    prev_pos = positions[0]['position']
+    for pos in positions[1:]:
+        if pos['position'] != prev_pos:
+            changes += abs(pos['position'] - prev_pos)
+            prev_pos = pos['position']
+    return changes
 
 def transcribe_audio(audio_url):
     """Transcribe audio using OpenAI Whisper API"""
     try:
-        # Download the audio file
         response = requests.get(audio_url)
         audio_file = BytesIO(response.content)
-        audio_file.name = "radio_message.mp3"  # Required by OpenAI
-        
-        # Transcribe using Whisper
+        audio_file.name = "radio_message.mp3"
         transcript = openai.Audio.transcribe(
             model="whisper-1",
             file=audio_file,
@@ -101,24 +105,15 @@ def main():
     
     # Get all relevant data
     with st.spinner("Loading session data..."):
-        # Get position data
         positions = api_client.get_position_data(selected_session['session_key'], selected_driver)
-        
-        # Get weather data
         weather = api_client.get_weather(selected_meeting['meeting_key'])
-        
-        # Get lap data
         laps = api_client.get_laps(selected_session['session_key'], selected_driver)
-        
-        # Get radio messages
         radio_messages = api_client.get_team_radio(selected_session['session_key'], selected_driver)
 
-    
     # Comprehensive Race Summary
     st.subheader("🏁 Race Summary")
     if st.button("Generate Comprehensive Race Analysis"):
         with st.spinner("Analyzing race data..."):
-            # Get all relevant data
             positions = api_client.get_position_data(selected_session['session_key'], selected_driver)
             laps = api_client.get_laps(selected_session['session_key'], selected_driver)
             stints = api_client.get_stints(selected_session['session_key'], selected_driver)
@@ -131,7 +126,7 @@ def main():
                 "session": selected_session_name,
                 "total_laps": len(laps) if laps else 0,
                 "final_position": positions[-1]['position'] if positions else "N/A",
-                "position_changes": self._calculate_position_changes(positions) if positions else 0,
+                "position_changes": calculate_position_changes(positions) if positions else 0,  # Fixed this line
                 "fastest_lap": min([lap['lap_duration'] for lap in laps if isinstance(lap.get('lap_duration'), (int, float))], default=0),
                 "tire_strategy": [{"stint": s['stint_number'], "compound": s['compound'], "laps": s['lap_end'] - s['lap_start'] + 1} for s in stints] if stints else [],
                 "weather_changes": len(weather) > 1 if weather else False,
@@ -182,12 +177,10 @@ def main():
         laps_df = pd.DataFrame(laps)
         laps_df['date_start'] = laps_df['date_start'].apply(parse_f1_datetime)
         
-        # Clean data - remove rows with null dates
         pos_df = pos_df.dropna(subset=['date'])
         laps_df = laps_df.dropna(subset=['date_start', 'lap_number'])
         
         if not pos_df.empty and not laps_df.empty:
-            # Merge position data with lap numbers
             merged_df = pd.merge_asof(
                 pos_df.sort_values('date'),
                 laps_df[['date_start', 'lap_number']].sort_values('date_start'),
@@ -196,7 +189,6 @@ def main():
                 direction='nearest'
             )
             
-            # Remove any rows where merge didn't work
             merged_df = merged_df.dropna(subset=['lap_number'])
             
             if not merged_df.empty:
@@ -224,7 +216,6 @@ def main():
         weather_df = pd.DataFrame(weather)
         weather_df['date'] = weather_df['date'].apply(parse_f1_datetime)
         
-        # Plot weather data
         fig = px.line(
             weather_df,
             x='date',
@@ -244,18 +235,15 @@ def main():
         radio_df['date'] = radio_df['date'].apply(parse_f1_datetime)
         radio_df = radio_df.sort_values('date')
         
-        # Get lap data for timestamp-to-lap conversion
         laps_df = pd.DataFrame(api_client.get_laps(selected_session['session_key'], selected_driver))
         if not laps_df.empty:
             laps_df['date_start'] = laps_df['date_start'].apply(parse_f1_datetime)
         
-        # Add empty columns if they don't exist
         for col in ['transcription', 'ai_summary', 'lap_number']:
             if col not in radio_df.columns:
                 radio_df[col] = None
         
         for idx, row in radio_df.iterrows():
-            # Find lap number for this radio message
             if not laps_df.empty and pd.notna(row['date']):
                 closest_lap = laps_df.iloc[(laps_df['date_start'] - row['date']).abs().argsort()[:1]]
                 if not closest_lap.empty:
@@ -271,12 +259,10 @@ def main():
                     if pd.isna(row['transcription']):
                         if st.button("AI Summary", key=f"summarize_{idx}"):
                             with st.spinner("Processing..."):
-                                # Transcribe audio
                                 transcription = transcribe_audio(row['recording_url'])
                                 if transcription:
                                     radio_df.at[idx, 'transcription'] = transcription
                                     
-                                    # Generate AI summary
                                     summary_prompt = f"Summarize this F1 team radio message in 1-2 sentences: {transcription}"
                                     ai_summary = openai.ChatCompletion.create(
                                         model="gpt-3.5-turbo",
@@ -314,7 +300,6 @@ def main():
             fig.update_layout(**get_plotly_theme()['layout'])
             st.plotly_chart(fig, use_container_width=True)
             
-            # Lap time stats
             fastest_lap = laps_df['lap_duration'].min()
             avg_lap = laps_df['lap_duration'].mean()
             
