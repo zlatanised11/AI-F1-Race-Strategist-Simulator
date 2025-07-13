@@ -76,6 +76,8 @@ def main():
     # Initialize session state
     if 'submitted' not in st.session_state:
         st.session_state.submitted = False
+    if 'fetched_data' not in st.session_state:
+        st.session_state.fetched_data = {}
     
     # Sidebar filters
     with st.sidebar:
@@ -107,11 +109,38 @@ def main():
         # Submit button that updates session state
         if st.button("Submit Analysis Request"):
             st.session_state.submitted = True
+            # Clear previous data when new submission is made
+            st.session_state.fetched_data = {}
+            
+            # Get all relevant data only when submitted
+            with st.spinner("Loading session data..."):
+                st.session_state.fetched_data['positions'] = api_client.get_position_data(selected_session['session_key'], selected_driver)
+                st.session_state.fetched_data['weather'] = api_client.get_weather(selected_meeting['meeting_key'])
+                st.session_state.fetched_data['laps'] = api_client.get_laps(selected_session['session_key'], selected_driver)
+                st.session_state.fetched_data['radio_messages'] = api_client.get_team_radio(selected_session['session_key'], selected_driver)
+                st.session_state.fetched_data['pit_data'] = api_client.get_pit_data(selected_session['session_key'], selected_driver)
+                st.session_state.fetched_data['stints'] = api_client.get_stints(selected_session['session_key'], selected_driver)
+                st.session_state.fetched_data['driver_details'] = selected_driver_details
+        
+        # Reset button
+        if st.button("Reset All"):
+            st.session_state.submitted = False
+            st.session_state.fetched_data = {}
+            st.experimental_rerun()
     
     # Check submission state
     if not st.session_state.submitted:
         st.info("Please select your analysis parameters and click 'Submit Analysis Request'")
         return
+    
+    # Access data from session state
+    positions = st.session_state.fetched_data.get('positions', [])
+    weather = st.session_state.fetched_data.get('weather', [])
+    laps = st.session_state.fetched_data.get('laps', [])
+    radio_messages = st.session_state.fetched_data.get('radio_messages', [])
+    pit_data = st.session_state.fetched_data.get('pit_data', [])
+    stints = st.session_state.fetched_data.get('stints', [])
+    selected_driver_details = st.session_state.fetched_data.get('driver_details', {})
     
     # Apply team styling
     st.markdown(apply_team_dark_style(selected_team), unsafe_allow_html=True)
@@ -132,15 +161,6 @@ def main():
         unsafe_allow_html=True
     )
     
-    # Get all relevant data
-    with st.spinner("Loading session data..."):
-        positions = api_client.get_position_data(selected_session['session_key'], selected_driver)
-        weather = api_client.get_weather(selected_meeting['meeting_key'])
-        laps = api_client.get_laps(selected_session['session_key'], selected_driver)
-        radio_messages = api_client.get_team_radio(selected_session['session_key'], selected_driver)
-        pit_data = api_client.get_pit_data(selected_session['session_key'], selected_driver)
-        stints = api_client.get_stints(selected_session['session_key'], selected_driver)
-
     # Comprehensive Race Summary
     st.subheader("🏁 Race Summary")
     if st.button("Generate Comprehensive Race Analysis"):
@@ -259,8 +279,8 @@ def main():
         laps_df = laps_df[laps_df['lap_duration'].notna()]
         
         if not laps_df.empty:
-            # Get pit data
-            pit_data = api_client.get_pit_data(selected_session['session_key'], selected_driver)
+            # Get pit data from session state
+            pit_data = st.session_state.fetched_data.get('pit_data', [])
             
             # Mark pit laps
             pit_laps = []
@@ -362,7 +382,7 @@ def main():
         radio_df['date'] = radio_df['date'].apply(parse_f1_datetime)
         radio_df = radio_df.sort_values('date')
         
-        laps_df = pd.DataFrame(api_client.get_laps(selected_session['session_key'], selected_driver))
+        laps_df = pd.DataFrame(laps)
         if not laps_df.empty:
             laps_df['date_start'] = laps_df['date_start'].apply(parse_f1_datetime)
         
