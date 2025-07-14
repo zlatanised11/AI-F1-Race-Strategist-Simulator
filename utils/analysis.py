@@ -60,22 +60,22 @@ class RaceAnalyzer:
     
     def analyze_radio_message(self, message: str, context: dict) -> dict:
         """Analyze a single radio message with context"""
+        # In your Race Summary section, replace the prompt with:
         prompt = f"""
-        Analyze this Formula 1 team radio message with the given context:
+        Create a concise one-paragraph race summary for {selected_driver_details['full_name']} ({selected_team}) 
+        during the {selected_session_name} at {selected_meeting_name} {selected_year}.
 
-        Message: {message}
+        Include these key details in a flowing narrative:
+        - Started {positions[0]['position'] if positions else 'N/A'}th, finished {positions[-1]['position'] if positions else 'N/A'}th
+        - Made {calculate_position_changes(positions)} position changes
+        - Fastest lap: {min([lap['lap_duration'] for lap in laps if isinstance(lap.get('lap_duration'), (int, float))], default=0):.3f}s
+        - Tire strategy: {[f"Stint {s['stint_number']} ({s['compound']} x{s['lap_end']-s['lap_start']+1} laps)" for s in stints] if stints else 'No data'}
+        - {len(radio_messages)} team radio messages exchanged
+        - Weather: {'changed' if len(weather) > 1 else 'stable'} conditions
 
-        Context:
-        - Lap: {context.get('lap_number', 'Unknown')}
-        - Position: {context.get('position', 'Unknown')}
-        - Session: {context.get('session_name', 'Unknown')}
-        - Team: {context.get('team_name', 'Unknown')}
-
-        Provide analysis covering:
-        1. Key information conveyed
-        2. Likely purpose/strategy
-        3. Urgency level (Low/Medium/High)
-        4. Suggested team response
+        Focus on the most impactful moments and overall performance assessment.
+        Write in a professional motorsport commentary style.
+        Keep it to one tight paragraph (4-5 sentences max).
         """
         
         return {
