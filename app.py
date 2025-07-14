@@ -148,13 +148,13 @@ def display_radio_messages(selected_session, selected_driver, radio_messages):
                                 st.session_state.ai_summaries[idx] = ai_summary
                 
                 transcription = st.session_state.transcriptions.get(idx, "")
-                st.text_area("Message", transcription, height=100, key=f"msg_{idx}")
+                st.text_area("Message", transcription, height=100, key=f"msg_{idx}",disabled=True)
                 
                 if idx in st.session_state.ai_summaries:
                     st.text_area("AI Summary", 
                                st.session_state.ai_summaries[idx], 
                                height=68, 
-                               key=f"sum_{idx}")
+                               key=f"sum_{idx}",disabled=True)
 
 def main():
     st.title("🏎️ Formula 1 Team Strategy Analyzer")
