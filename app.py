@@ -472,5 +472,10 @@ def main():
     radio_messages = st.session_state.fetched_data.get('radio_messages', [])
     display_radio_messages(selected_session, selected_driver, radio_messages)
 
+    st.markdown("""
+    ---
+    <small>**Disclaimer**: This app uses publicly available racing data and is not affiliated with or endorsed by Formula 1, the FIA, or any F1 teams.</small>
+    """, unsafe_allow_html=True)
+
 if __name__ == "__main__":
     main()
