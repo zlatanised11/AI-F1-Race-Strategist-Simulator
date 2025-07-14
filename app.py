@@ -52,7 +52,6 @@ def transcribe_audio(audio_url):
         audio_file = BytesIO(response.content)
         audio_file.name = "radio_message.mp3"
         
-        # Old API syntax (works with openai==0.28.1)
         transcript = openai.Audio.transcribe(
             model="whisper-1",
             file=audio_file,
@@ -464,7 +463,6 @@ def main():
             st.warning("No lap data available for this session")
 
     # Radio Messages with Transcription and AI Summary
-# Inside your main() function, where you currently have the radio messages code:
     st.subheader("📻 Team Radio Messages")
     radio_messages = st.session_state.fetched_data.get('radio_messages', [])
     display_radio_messages(selected_session, selected_driver, radio_messages)
