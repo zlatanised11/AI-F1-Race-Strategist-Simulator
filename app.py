@@ -10,6 +10,11 @@ import requests
 from io import BytesIO
 import openai
 
+st.set_page_config(
+    page_title="F1 Stats",  # Change this to your desired title
+    page_icon="🏎️",                     # Optional: Set an emoji or image as favicon
+    layout="wide"                       # Optional: Keeps the layout wide
+)
 # Load environment variables
 load_dotenv()
 
