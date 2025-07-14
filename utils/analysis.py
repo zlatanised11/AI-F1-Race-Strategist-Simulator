@@ -60,7 +60,6 @@ class RaceAnalyzer:
     
     def analyze_radio_message(self, message: str, context: dict) -> dict:
         """Analyze a single radio message with context"""
-        # In your Race Summary section, replace the prompt with:
         prompt = f"""
         Create a concise one-paragraph race summary for {selected_driver_details['full_name']} ({selected_team}) 
         during the {selected_session_name} at {selected_meeting_name} {selected_year}.
