@@ -269,7 +269,7 @@ def main():
             }
             
             prompt = f"""
-            Create a comprehensive race summary for {summary_data['driver_name']} ({summary_data['team']}) 
+            Generate a concise 3-paragraph statistical race summary for {summary_data['driver_name']} ({summary_data['team']}) 
             during the {summary_data['session']} session.
             
             Key data:
@@ -287,6 +287,8 @@ def main():
             3. Position change patterns
             4. Key moments from radio communications
             5. Weather impact (if relevant)
+
+            Include only verifiable data from the API. No subjective assessments. Dont calculate starting position or talk about it
             """
             
             race_summary = openai.ChatCompletion.create(
